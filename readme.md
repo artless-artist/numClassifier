@@ -8,6 +8,8 @@
 
 * 使用的手写数字数据集来自MNIST
 
+* 更具体的原理解释见https://www.cnblogs.com/artlessist/p/23114063
+
 ## 项目结构
 
 ```
