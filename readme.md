@@ -8,7 +8,7 @@
 
 * 使用的手写数字数据集来自MNIST
 
-## 创建环境
+## 环境配置
 
 我的开发环境在WSL中，使用conda进行环境隔离，仅供参考，也可以在Windows下开发，或者使用venv等，按个人工作习惯即可，先创建好工作目录，依次在目录下执行如下命令：
 
@@ -25,5 +25,8 @@ conda install pytorch #在虚拟环境中安装pytorch
 conda install matplotlib
 conda install -y --freeze-installed -c conda-forge \
     xorg-libice xorg-libsm xcb-util-wm xcb-util-image xcb-util-keysyms xcb-util-renderutil
-#补充底层库让图像能够弹出显示
+#补充底层库让图像能够显示
 ```
+
+## 训练过程
+* 直接运行`train.py`即可，会自动下载MNIST数据集(若已经下载过了会自动跳过)，并进行训练和测试，弹出训练过程损失与准确率变化的折线图，并将图片保存到runs/，可视化训练过程（如果弹出失败，尝试重启WSL）

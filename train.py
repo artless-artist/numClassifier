@@ -3,7 +3,7 @@ import torchvision
 from torch.utils import data
 from torchvision import transforms
 from module import net, cross_entropy, train
-from vis import TrainingHistory, plot_training_curves
+from vis import Animator
 
 #下载数据集
 trans = transforms.ToTensor() #使用ToTensor把一张PIL图片或NumPy数组转成PyTorch张量，并自动归一化到[0, 1]
@@ -30,15 +30,16 @@ b = torch.zeros(num_outputs, requires_grad=True) #偏置，初始值置0
 num_epochs = 10 #迭代周期
 lr =0.1 #学习率
 
-#训练时逐轮记录损失/精度到history
-history = TrainingHistory()
+#训练时逐轮刷新曲线（动画）
+animator = Animator() #动画窗口，在train() 中每跑完一轮就会调一次 animator.add()，把当前一轮的数据传进去进行绘制
 
 #进行训练
-train(net, train_iter, test_iter, cross_entropy, num_epochs, W, b, lr, history=history)
+train(net, train_iter, test_iter, cross_entropy, num_epochs, W, b, lr, history=animator)
 
-#训练结束后同时保存 PNG 并弹窗显示
-plot_training_curves(history, save_path="runs/softmax_mnist.png") #弹窗会阻塞，直到手动关掉窗口
+#训练结束后存一份 PNG（复用动画窗口，不会另开一个），并让窗口留在屏幕上
+animator.save("runs/softmax_mnist.png")
+animator.show() #阻塞，关掉窗口脚本才结束
 
 #数据流向：train -> train_epoch -> net -> cross_entropy -> accuracy -> evaluate_accuracy
-#                                            -> sgd -> train_epoch
-#         train -> history.add -> plot_training_curves -> PNG/弹窗（vis.py）
+#                      |                     \-> sgd -> 回到train_epoch
+#                  animator.add -> 逐轮刷新曲线 -> plot_training_curves -> PNG

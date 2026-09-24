@@ -87,9 +87,8 @@ def train_epoch(net, train_iter, loss, W, b, lr):
 
 def train(net, train_iter, test_iter, loss, num_epochs, W, b, lr, history=None):#将前面定义的函数传入
     """训练模型的完整过程
-    传入 history 时会逐轮记录指标，训练过程本身不受影响
-    history 采用鸭子类型，只要有add(轮次, 训练损失, 训练精度, 测试精度) 方法即可，例如 vis.TrainingHistory
-    这样本模块不必依赖 matplotlib
+    逐轮记录指标传入history或者Animator记录，训练过程本身不受影响
+    history/Animator 采用鸭子类型，只要有add(轮次, 训练损失, 训练精度, 测试精度) 方法即可，这样本模块不必依赖 matplotlib
     """
     for epoch in range(num_epochs): #训练num_epochs轮
         train_metrics = train_epoch(net, train_iter, loss, W, b, lr) #进行训练
@@ -97,7 +96,7 @@ def train(net, train_iter, test_iter, loss, num_epochs, W, b, lr, history=None):
 
         if history is not None: 
             history.add(epoch + 1, train_metrics[0], train_metrics[1], test_acc) 
-            #把这一轮的指标喂给训练历史记录器，训练结束后交给 vis.py中的函数画折线图
+            #把这一轮的指标喂给训练历史记录器，训练结束后交给vis.py中的函数画折线图
 
     train_loss, train_acc = train_metrics #在多轮训练结束后，取出最后一轮的数据
     assert train_loss < 0.5, train_loss

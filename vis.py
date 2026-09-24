@@ -2,28 +2,39 @@
 
 把每一轮训练的 训练损失 / 训练集分类精度 / 测试集分类精度 画成折线图。
 
-依赖：matplotlib（已装在虚拟环境里；如需补装：pip install matplotlib）
+依赖：matplotlib
 
-本模块只做「记录 + 绘图」，不改动 module.py 和 train.py 里的任何代码。
+本模块只做记录 + 绘图，不改动 module.py 和 train.py 里的任何代码。
 module.py 的 train() 最后一个参数是 history（可选，鸭子类型）：传进去之后，
 train() 每跑完一轮就会调用一次 history.add(轮次, 训练损失, 训练精度, 测试精度)，
 把逐轮指标交给本模块；不传时 train() 的行为和以前完全一样，仍是只训练、不记录。
 
-============================== 推荐用法（train.py 里加 3 行）==============================
+因为走的是鸭子类型，下面两个东西都能直接传给 train(history=...)：
+    TrainingHistory  只记录数据，训练结束后一次性出图
+    Animator         记录 + 逐轮刷新曲线，训练过程中就能看到动画
+
+============================== 推荐用法==============================
 
     from module import net, cross_entropy, train
-    from vis import TrainingHistory, plot_training_curves
+    from vis import Animator
 
-    history = TrainingHistory()                     # 1. 建一个记录器
+    animator = Animator()                            # 1. 建窗口，训练时逐轮刷新曲线
 
-    train(net, train_iter, test_iter, cross_entropy,   # 2. 传 history，train 内部逐轮打点
-          num_epochs, W, b, lr, history=history)
+    train(net, train_iter, test_iter, cross_entropy,   # 2. 传 animator，train 内部逐轮调 add()
+          num_epochs, W, b, lr, history=animator)
 
-    # 3. 出图：左图 = 训练损失折线，右图 = 训练集/测试集精度折线
-    #    save_path 存成 PNG；show 默认为 True，会再弹窗（弹窗阻塞，所以要放在脚本最后一行）
-    plot_training_curves(history, save_path="runs/softmax_mnist.png")
+    animator.save("runs/softmax_mnist.png")          # 3. 存一份最终 PNG（复用同一画布）
 
-想额外留一份逐轮数据的 CSV，再加一句 history.to_csv("runs/softmax_mnist.csv") 即可。
+    animator.show()                                  # 4. 保持窗口：阻塞到手动关窗
+
+只需要静态图、不要动画时，把 Animator 换成 TrainingHistory 即可::
+
+    history = TrainingHistory()
+    train(..., history=history)
+    plot_training_curves(history, save_path="runs/softmax_mnist.png")  # 默认 show=True 会弹窗
+
+想额外留一份逐轮数据的 CSV，加一句 history.to_csv("runs/softmax_mnist.csv") 即可
+（动画版就写 animator.history.to_csv(...)）。
 
 如果不想改 module.py，也可以自己在 train.py 里写循环，
 用 make_epoch_recorder() 直接拿到打点函数::
@@ -63,6 +74,7 @@ from matplotlib import font_manager
 
 __all__ = [
     "TrainingHistory",
+    "Animator",
     "plot_training_curves",
     "make_epoch_recorder",
     "setup_matplotlib_style",
@@ -438,6 +450,65 @@ def plot_training_curves(
         plt.show()
 
     return fig, (ax_loss, ax_acc)
+
+
+class Animator:
+    """训练过程中逐轮刷新曲线的绘制器（d2l Animator 风格）。
+
+    add() 的签名与 train() 的 history 钩子一致，所以可以直接
+    ``train(..., history=animator)``，训练时曲线会一轮一轮地长出来。
+
+    逐轮数据同时记录在 ``self.history`` 里；训练结束后用 save() 把窗口里的图直接
+    存成 PNG（复用同一画布，不会另开窗口），再用 show() 让窗口留在屏幕上。
+
+    注意：实时刷新依赖交互式后端（本机是 qtagg）。在没有图形界面的环境下运行，
+    plt.pause() 不会有窗口，但数据照常记录，训练结束后依然能出图。
+    """
+
+    def __init__(self, figsize=(11.0, 4.2), pause=0.1, title=None,
+                 lang="auto", labels=None, history=None):
+        """
+        :param pause: 每轮刷新后停顿的秒数。太小可能来不及重绘，太大拖慢训练。
+        :param title: 图标题，默认按语言取"训练过程 / Training Process"。
+        :param history: 可复用已有的 TrainingHistory（比如断点续训时已有前面几轮数据）。
+        """
+        self.pause = pause
+        self.title = title
+        self.lang = lang
+        self.labels = labels
+        self.history = history if history is not None else TrainingHistory()
+        # 必须先把全局风格（含 figure.dpi 和字体）设好再建图，否则窗口与 save() 出来的图
+        # 尺寸会和 plot_training_curves 单独出的图不一致（1100x420 vs 1320x504）
+        setup_matplotlib_style()
+        self.fig, (self.ax_loss, self.ax_acc) = plt.subplots(1, 2, figsize=figsize)
+        if len(self.history):  # 复用了带数据的 history 时，先把已有曲线画出来
+            self._draw()
+
+    def add(self, epoch=None, train_loss=None, train_acc=None,
+            test_acc=None, test_loss=None):
+        """记录一轮指标并立刻重绘曲线，返回 self 方便链式调用。"""
+        self.history.add(epoch=epoch, train_loss=train_loss, train_acc=train_acc,
+                         test_acc=test_acc, test_loss=test_loss)
+        self._draw()
+        plt.pause(self.pause)  # 把这一轮画到窗口上
+        return self
+
+    def save(self, path):
+        """把窗口里的图存成文件。复用同一个画布，所以不会另开一个窗口。"""
+        _ensure_parent_dir(path)
+        self.fig.savefig(path)
+        return path
+
+    def show(self):
+        """训练结束后调用：阻塞住事件循环，让窗口留在屏幕上（关掉窗口脚本才结束）。"""
+        plt.show()
+
+    def _draw(self):
+        """先清空两张子图再重画，否则每轮调用都会把曲线叠加成好几层。"""
+        for axes in self.fig.axes:
+            axes.clear()
+        plot_training_curves(self.history, fig=self.fig, title=self.title,
+                             lang=self.lang, labels=self.labels, show=False)
 
 
 def make_epoch_recorder(history=None):
