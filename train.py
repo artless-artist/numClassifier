@@ -3,6 +3,7 @@ import torchvision
 from torch.utils import data
 from torchvision import transforms
 from module import net, cross_entropy, train
+from vis import TrainingHistory, plot_training_curves
 
 #下载数据集
 trans = transforms.ToTensor() #使用ToTensor把一张PIL图片或NumPy数组转成PyTorch张量，并自动归一化到[0, 1]
@@ -29,6 +30,15 @@ b = torch.zeros(num_outputs, requires_grad=True) #偏置，初始值置0
 num_epochs = 10 #迭代周期
 lr =0.1 #学习率
 
-train(net, train_iter, test_iter, cross_entropy, num_epochs, W, b, lr)
+#训练时逐轮记录损失/精度到history
+history = TrainingHistory()
+
+#进行训练
+train(net, train_iter, test_iter, cross_entropy, num_epochs, W, b, lr, history=history)
+
+#训练结束后同时保存 PNG 并弹窗显示
+plot_training_curves(history, save_path="runs/softmax_mnist.png") #弹窗会阻塞，直到手动关掉窗口
+
 #数据流向：train -> train_epoch -> net -> cross_entropy -> accuracy -> evaluate_accuracy
 #                                            -> sgd -> train_epoch
+#         train -> history.add -> plot_training_curves -> PNG/弹窗（vis.py）

@@ -5,34 +5,28 @@
 依赖：matplotlib（已装在虚拟环境里；如需补装：pip install matplotlib）
 
 本模块只做「记录 + 绘图」，不改动 module.py 和 train.py 里的任何代码。
-但有一点要注意：module.py 的 train() 是在所有轮次跑完之后，才把最后一轮的
-train_metrics / test_acc 取出来（见 train() 末尾那两行），所以它拿不到逐轮数据，
-直接用它画不出「每一轮」的曲线。要画逐轮曲线，需要在 train.py 里自己写 epoch 循环，
-把 train_epoch() 和 evaluate_accuracy() 的返回值逐轮喂给本模块。
+module.py 的 train() 最后一个参数是 history（可选，鸭子类型）：传进去之后，
+train() 每跑完一轮就会调用一次 history.add(轮次, 训练损失, 训练精度, 测试精度)，
+把逐轮指标交给本模块；不传时 train() 的行为和以前完全一样，仍是只训练、不记录。
 
-============================== 推荐用法（改 train.py，module.py 不用动）==============================
+============================== 推荐用法（train.py 里加 3 行）==============================
 
-    from module import net, cross_entropy, train_epoch, evaluate_accuracy
+    from module import net, cross_entropy, train
     from vis import TrainingHistory, plot_training_curves
 
     history = TrainingHistory()                     # 1. 建一个记录器
 
-    for epoch in range(num_epochs):                 # 2. 自己写 epoch 循环
-        # train_epoch 返回这一轮在训练集上的 (平均损失, 分类精度)
-        train_loss, train_acc = train_epoch(net, train_iter, cross_entropy, W, b, lr)
-        # evaluate_accuracy 返回这一轮在测试集上的分类精度
-        test_acc = evaluate_accuracy(net, W, b, test_iter)
+    train(net, train_iter, test_iter, cross_entropy,   # 2. 传 history，train 内部逐轮打点
+          num_epochs, W, b, lr, history=history)
 
-        history.add(epoch + 1,                      # 3. 每轮结束后打一个点
-                    train_loss=train_loss,
-                    train_acc=train_acc,
-                    test_acc=test_acc)
-
-    # 4. 训练结束后出图：左图 = 训练损失折线，右图 = 训练集/测试集精度折线
-    history.to_csv("runs/softmax_mnist.csv")        # 落盘，可选
+    # 3. 出图：左图 = 训练损失折线，右图 = 训练集/测试集精度折线
+    #    save_path 存成 PNG；show 默认为 True，会再弹窗（弹窗阻塞，所以要放在脚本最后一行）
     plot_training_curves(history, save_path="runs/softmax_mnist.png")
 
-等价的省事写法，用 make_epoch_recorder() 直接拿到打点函数::
+想额外留一份逐轮数据的 CSV，再加一句 history.to_csv("runs/softmax_mnist.csv") 即可。
+
+如果不想改 module.py，也可以自己在 train.py 里写循环，
+用 make_epoch_recorder() 直接拿到打点函数::
 
     from vis import make_epoch_recorder, plot_training_curves
 
