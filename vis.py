@@ -1,29 +1,71 @@
 """训练过程可视化工具
 
-本模块只提供"记录 + 绘图"的接口，不修改 train.py / module.py。
-其他文件只需要在每轮 epoch 结束后把指标喂进来，最后调用绘图函数即可。
+把每一轮训练的 训练损失 / 训练集分类精度 / 测试集分类精度 画成折线图。
 
-典型用法（在 train.py 中）::
+依赖：matplotlib（已装在虚拟环境里；如需补装：pip install matplotlib）
 
+本模块只做「记录 + 绘图」，不改动 module.py 和 train.py 里的任何代码。
+但有一点要注意：module.py 的 train() 是在所有轮次跑完之后，才把最后一轮的
+train_metrics / test_acc 取出来（见 train() 末尾那两行），所以它拿不到逐轮数据，
+直接用它画不出「每一轮」的曲线。要画逐轮曲线，需要在 train.py 里自己写 epoch 循环，
+把 train_epoch() 和 evaluate_accuracy() 的返回值逐轮喂给本模块。
+
+============================== 推荐用法（改 train.py，module.py 不用动）==============================
+
+    from module import net, cross_entropy, train_epoch, evaluate_accuracy
     from vis import TrainingHistory, plot_training_curves
 
-    history = TrainingHistory()
+    history = TrainingHistory()                     # 1. 建一个记录器
 
-    # 每一轮 epoch 结束后记录一次
-    history.add(epoch, train_loss=train_loss_row,
-                train_acc=train_acc_row, test_acc=test_acc_row)
+    for epoch in range(num_epochs):                 # 2. 自己写 epoch 循环
+        # train_epoch 返回这一轮在训练集上的 (平均损失, 分类精度)
+        train_loss, train_acc = train_epoch(net, train_iter, cross_entropy, W, b, lr)
+        # evaluate_accuracy 返回这一轮在测试集上的分类精度
+        test_acc = evaluate_accuracy(net, W, b, test_iter)
 
-    # 训练结束后绘图（也可以只传 csv 路径）
-    history.to_csv("runs/softmax_mnist.csv")
+        history.add(epoch + 1,                      # 3. 每轮结束后打一个点
+                    train_loss=train_loss,
+                    train_acc=train_acc,
+                    test_acc=test_acc)
+
+    # 4. 训练结束后出图：左图 = 训练损失折线，右图 = 训练集/测试集精度折线
+    history.to_csv("runs/softmax_mnist.csv")        # 落盘，可选
     plot_training_curves(history, save_path="runs/softmax_mnist.png")
 
-也支持先把日志落盘、之后再单独画图::
+等价的省事写法，用 make_epoch_recorder() 直接拿到打点函数::
 
+    from vis import make_epoch_recorder, plot_training_curves
+
+    record, history = make_epoch_recorder()
+    for epoch in range(num_epochs):
+        train_loss, train_acc = train_epoch(net, train_iter, cross_entropy, W, b, lr)
+        test_acc = evaluate_accuracy(net, W, b, test_iter)
+        record(epoch + 1, train_loss, train_acc, test_acc)  # 轮次, 损失, 训练精度, 测试精度
+    plot_training_curves(history)
+
+============================== 其它入口：跳过记录，直接画 ==============================
+
+指标已经存成 CSV 或 dict 时，可以不用 TrainingHistory，直接把数据交给绘图函数::
+
+    # 传 CSV 路径（TrainingHistory.to_csv 存出来的格式）
     plot_training_curves("runs/softmax_mnist.csv", save_path="runs/curve.png")
+
+    # 传 dict，键名固定为 epoch / train_loss / train_acc / test_acc（缺哪个就少画哪条线）
+    plot_training_curves({"epoch": [1, 2, 3],
+                          "train_loss": [0.9, 0.6, 0.4],
+                          "train_acc": [0.75, 0.83, 0.87],
+                          "test_acc": [0.72, 0.80, 0.85]})
+
+说明：plot_training_curves(..., show=True) 是默认值，会弹窗显示；只想存图片不弹窗就传
+show=False
 """
 
 import csv
 import os
+
+import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib import font_manager
 
 __all__ = [
     "TrainingHistory",
@@ -31,31 +73,6 @@ __all__ = [
     "make_epoch_recorder",
     "setup_matplotlib_style",
 ]
-
-# matplotlib 延迟导入：只做指标记录（TrainingHistory）时无需安装 matplotlib，
-# 只有真正调用绘图函数时才要求该依赖。
-_matplotlib = None
-_plt = None
-_font_manager = None
-
-
-def _require_matplotlib():
-    """按需导入 matplotlib，缺失时给出明确的安装提示。
-
-    :return: ``(matplotlib, pyplot, font_manager)`` 三个模块对象。
-    """
-    global _matplotlib, _plt, _font_manager
-    if _matplotlib is None:
-        try:
-            import matplotlib
-            from matplotlib import font_manager, pyplot
-        except ImportError as exc:  # pragma: no cover - 取决于运行环境
-            raise ImportError(
-                "绘图需要 matplotlib，请先安装：pip install matplotlib"
-            ) from exc
-        _matplotlib, _plt, _font_manager = matplotlib, pyplot, font_manager
-    return _matplotlib, _plt, _font_manager
-
 
 # --------------------------------------------------------------------------- #
 # 中文字体 / 文案配置
@@ -111,29 +128,27 @@ def setup_matplotlib_style(font_candidates=None, base_font_size=11):
     """
     global _CJK_FONT_NAME
 
-    matplotlib_mod, _, font_manager_mod = _require_matplotlib()
-
     candidates = list(font_candidates) if font_candidates else list(_CJK_FONT_CANDIDATES)
 
     if _CJK_FONT_NAME is None:
         try:
-            installed = {f.name for f in font_manager_mod.fontManager.ttflist}
+            installed = {f.name for f in font_manager.fontManager.ttflist}
         except Exception:  # pragma: no cover - 字体表读取失败时退化为英文
             installed = set()
         _CJK_FONT_NAME = next((n for n in candidates if n in installed), "")
 
     if _CJK_FONT_NAME:
-        matplotlib_mod.rcParams["font.sans-serif"] = [_CJK_FONT_NAME, "DejaVu Sans"]
+        matplotlib.rcParams["font.sans-serif"] = [_CJK_FONT_NAME, "DejaVu Sans"]
     # 负号用 ASCII 版本，避免中文字体缺失导致的方块
-    matplotlib_mod.rcParams["axes.unicode_minus"] = False
-    matplotlib_mod.rcParams["figure.dpi"] = 120
-    matplotlib_mod.rcParams["figure.autolayout"] = False
-    matplotlib_mod.rcParams["font.size"] = base_font_size
-    matplotlib_mod.rcParams["axes.grid"] = True
-    matplotlib_mod.rcParams["grid.alpha"] = 0.3
-    matplotlib_mod.rcParams["grid.linestyle"] = "--"
-    matplotlib_mod.rcParams["axes.spines.top"] = False
-    matplotlib_mod.rcParams["axes.spines.right"] = False
+    matplotlib.rcParams["axes.unicode_minus"] = False
+    matplotlib.rcParams["figure.dpi"] = 120
+    matplotlib.rcParams["figure.autolayout"] = False
+    matplotlib.rcParams["font.size"] = base_font_size
+    matplotlib.rcParams["axes.grid"] = True
+    matplotlib.rcParams["grid.alpha"] = 0.3
+    matplotlib.rcParams["grid.linestyle"] = "--"
+    matplotlib.rcParams["axes.spines.top"] = False
+    matplotlib.rcParams["axes.spines.right"] = False
 
     return bool(_CJK_FONT_NAME)
 
@@ -334,7 +349,6 @@ def plot_training_curves(
     :param fig: 传入已有的 Figure 可复用画布；为空则新建。
     :return: ``(fig, (ax_loss, ax_acc))``，方便调用方继续二次定制。
     """
-    _, plt, _ = _require_matplotlib()
     text = _resolve_labels(lang, labels)
 
     # ---- 统一入参 ----
@@ -371,10 +385,10 @@ def plot_training_curves(
 
     # ---- 左图：损失 ----
     if any(v is not None for v in train_loss):
-        ax_loss.plot(x, _pair(x, train_loss), marker=marker, linewidth=linewidth,
+        ax_loss.plot(*_pair(x, train_loss), marker=marker, linewidth=linewidth,
                      markersize=markersize, color="#1f77b4", label=text["train_loss"])
     if any(v is not None for v in test_loss):
-        ax_loss.plot(x, _pair(x, test_loss), marker=marker, linewidth=linewidth,
+        ax_loss.plot(*_pair(x, test_loss), marker=marker, linewidth=linewidth,
                      markersize=markersize, color="#ff7f0e", label=text["test_loss"])
     ax_loss.set_xlabel(text["xlabel"])
     ax_loss.set_ylabel(text["loss_ylabel"])
@@ -389,10 +403,10 @@ def plot_training_curves(
 
     # ---- 右图：精度 ----
     if any(v is not None for v in train_acc):
-        ax_acc.plot(x, _pair(x, train_acc), marker=marker, linewidth=linewidth,
+        ax_acc.plot(*_pair(x, train_acc), marker=marker, linewidth=linewidth,
                     markersize=markersize, color="#2ca02c", label=text["train_acc"])
     if any(v is not None for v in test_acc):
-        ax_acc.plot(x, _pair(x, test_acc), marker=marker, linewidth=linewidth,
+        ax_acc.plot(*_pair(x, test_acc), marker=marker, linewidth=linewidth,
                     markersize=markersize, color="#d62728", label=text["test_acc"])
     ax_acc.set_xlabel(text["xlabel"])
     ax_acc.set_ylabel(text["acc_ylabel"])
@@ -517,7 +531,8 @@ def _ensure_parent_dir(path):
 # --------------------------------------------------------------------------- #
 
 if __name__ == "__main__":
-    _require_matplotlib()[0].use("Agg")
+    # 自测只保存图片、不弹窗，切到 Agg 后端
+    matplotlib.use("Agg")
 
     demo = TrainingHistory()
     for epoch in range(10):

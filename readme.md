@@ -17,5 +17,13 @@ conda create -n NC python=3.11 #创建虚拟环境
 conda activate NC #进入创建的虚拟环境
 
 conda install pytorch #在虚拟环境中安装pytorch
-conda install matplotlib #可选(用作训练结果可视化的库)
+```
+
+如果需要使用训练过程可视化，观察每一轮训练中的损失变化趋势（这一部分写在`vis.py`中），则需要额外安装如下部分：
+
+```bash
+conda install matplotlib
+conda install -y --freeze-installed -c conda-forge \
+    xorg-libice xorg-libsm xcb-util-wm xcb-util-image xcb-util-keysyms xcb-util-renderutil
+#补充底层库让图像能够弹出显示
 ```

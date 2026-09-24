@@ -1,6 +1,5 @@
 import torch
 import torchvision
-#from IPython import display
 from torch.utils import data
 from torchvision import transforms
 from module import net, cross_entropy, train
@@ -32,4 +31,4 @@ lr =0.1 #学习率
 
 train(net, train_iter, test_iter, cross_entropy, num_epochs, W, b, lr)
 #数据流向：train -> train_epoch -> net -> cross_entropy -> accuracy -> evaluate_accuracy
-#                                   -> cross_entropy -> sgd -> train_epoch
+#                                            -> sgd -> train_epoch
