@@ -1,15 +1,16 @@
+import os
 import torch
 import torchvision
 from torch.utils import data
 from torchvision import transforms
-from module import net, cross_entropy, train
+from module import net, cross_entropy, train, DATA_DIR, WORK_DIR
 from vis import Animator
 
 #下载数据集
 trans = transforms.ToTensor() #使用ToTensor把一张PIL图片或NumPy数组转成PyTorch张量，并自动归一化到[0, 1]
 #trans现在是一个"待用"的变换对象，接下来通过torchvision下载数据集，并调用这个trans将数据集中的图片转换为张量形式
-mnist_train = torchvision.datasets.MNIST(root="../data", train=True, transform=trans, download=True) #训练数据集
-mnist_test = torchvision.datasets.MNIST(root="../data", train=False, transform=trans, download=True) #测试数据集
+mnist_train = torchvision.datasets.MNIST(root=DATA_DIR, train=True, transform=trans, download=True) #训练数据集
+mnist_test = torchvision.datasets.MNIST(root=DATA_DIR, train=False, transform=trans, download=True) #测试数据集
 #好消息是，torchvision会自动检查目录下是否已经存在所需文件，所以不必担心启动程序时重复下载
 
 #读取数据集
@@ -36,8 +37,12 @@ animator = Animator() #动画窗口，在train() 中每跑完一轮就会调一�
 #进行训练
 train(net, train_iter, test_iter, cross_entropy, num_epochs, W, b, lr, history=animator)
 
+#保存训练好的权重与偏置，供 infer.py 推理时读取（路径与 module.load_model 保持一致）
+os.makedirs(WORK_DIR, exist_ok=True) #确保保存目录存在
+torch.save({"W": W, "b": b}, WORK_DIR / "model.pt")
+
 #训练结束后存一份 PNG（复用动画窗口，不会另开一个），并让窗口留在屏幕上
-animator.save("runs/softmax_mnist.png")
+animator.save(WORK_DIR / "softmax_mnist.png")
 animator.show() #阻塞，关掉窗口脚本才结束
 
 #数据流向：train -> train_epoch -> net -> cross_entropy -> accuracy -> evaluate_accuracy

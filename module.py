@@ -1,4 +1,15 @@
 import torch
+import os
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
+WORK_DIR = BASE_DIR / "runs"
+
+BOARD_SIZE = 28            # 手写板对应 MNIST 的 28x28
+SCALE = 10                 # 手写板放大倍数：28 -> 280 像素，方便用鼠标落笔
+DPI = 100                  # 画布分辨率
+LINE_WIDTH = 14            # 笔画粗细（单位：点），约等于 28x28 下的 2 像素
 
 def softmax(X):
     """softmax函数"""
@@ -82,7 +93,7 @@ def train_epoch(net, train_iter, loss, W, b, lr):
         l = loss(y_hat, y) #损失函数使用之前的cross_entropy
         l.sum().backward() #进行反向传播，更新参数
         sgd([W, b], lr, X.shape[0]) #已经对输入数据处理过了，此处X.shape[0] = batch_size
-        metric.add(float(l.sum()), accuracy(y_hat, y), y.numel())
+        metric.add(l.sum().item(), accuracy(y_hat, y), y.numel()) #.item()取标量，避免requires_grad张量转float时的告警
     return metric[0] / metric[2], metric[1] / metric[2] #返回训练损失和训练精度
 
 def train(net, train_iter, test_iter, loss, num_epochs, W, b, lr, history=None):#将前面定义的函数传入
@@ -107,3 +118,19 @@ def train(net, train_iter, test_iter, loss, num_epochs, W, b, lr, history=None):
 	#训练精度在0.7到1之间 确认训练精度合理
 	#测试精度在0.7到1之间 确认泛化正常
 	#任意条件不满足，会导致断言失败，也就是提醒训练出现问题
+
+def load_model(path=WORK_DIR/"model.pt"):
+    """读取训练好的权重和偏置；如果文件不存在就提示一下并返回 None"""
+    if not os.path.exists(path):
+        print("没有找到权重文件 {}，请先运行 train.py 训练模型。".format(path))
+        return None
+    checkpoint = torch.load(path, map_location="cpu")
+    return checkpoint["W"], checkpoint["b"]
+
+def predict(image, W, b):
+    """对一张 28x28 的灰度图做预测，返回 (预测数字, 置信度)"""
+    x = image.float().view(1, 1, BOARD_SIZE, BOARD_SIZE)   # (28, 28) -> (1, 1, 28, 28)
+    with torch.no_grad():                      # 推理不需要梯度
+        probs = net(x, W, b)[0]                # net 里已经做了 softmax，输出就是概率
+    confidence, digit = probs.max(0)
+    return int(digit), float(confidence)
