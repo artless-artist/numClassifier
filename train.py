@@ -1,0 +1,35 @@
+import torch
+import torchvision
+#from IPython import display
+from torch.utils import data
+from torchvision import transforms
+from module import net, cross_entropy, train
+
+#下载数据集
+trans = transforms.ToTensor() #使用ToTensor把一张PIL图片或NumPy数组转成PyTorch张量，并自动归一化到[0, 1]
+#trans现在是一个"待用"的变换对象，接下来通过torchvision下载数据集，并调用这个trans将数据集中的图片转换为张量形式
+mnist_train = torchvision.datasets.MNIST(root="../data", train=True, transform=trans, download=True) #训练数据集
+mnist_test = torchvision.datasets.MNIST(root="../data", train=False, transform=trans, download=True) #测试数据集
+#好消息是，torchvision会自动检查目录下是否已经存在所需文件，所以不必担心启动程序时重复下载
+
+#读取数据集
+batch_size = 256 #每一批次读取256张图片
+dataloader_workers=4 #使用4个进程来读取数据
+
+train_iter = data.DataLoader(mnist_train, batch_size, shuffle=True, num_workers=dataloader_workers)
+test_iter = data.DataLoader(mnist_test, batch_size, shuffle=False, num_workers=dataloader_workers)
+
+#初始化参数
+num_inputs = 784 #图片是28*28，即有784个像素，输入为784
+num_outputs = 10 #分类为0~9中的一个数字，输出为10
+
+W = torch.normal(0, 0.01, size=(num_inputs, num_outputs), requires_grad=True) #权重矩阵，初始值标准正态分布服从随机生成
+b = torch.zeros(num_outputs, requires_grad=True) #偏置，初始值置0
+
+#超参数
+num_epochs = 10 #迭代周期
+lr =0.1 #学习率
+
+train(net, train_iter, test_iter, cross_entropy, num_epochs, W, b, lr)
+#数据流向：train -> train_epoch -> net -> cross_entropy -> accuracy -> evaluate_accuracy
+#                                   -> cross_entropy -> sgd -> train_epoch
