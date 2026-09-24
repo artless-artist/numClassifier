@@ -44,7 +44,3 @@ torch.save({"W": W, "b": b}, WORK_DIR / "model.pt")
 #训练结束后存一份 PNG（复用动画窗口，不会另开一个），并让窗口留在屏幕上
 animator.save(WORK_DIR / "softmax_mnist.png")
 animator.show() #阻塞，关掉窗口脚本才结束
-
-#数据流向：train -> train_epoch -> net -> cross_entropy -> accuracy -> evaluate_accuracy
-#                      |                     \-> sgd -> 回到train_epoch
-#                  animator.add -> 逐轮刷新曲线 -> plot_training_curves -> PNG
